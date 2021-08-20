@@ -1,0 +1,6 @@
+apiVersion: rules.quay.io/v1alpha1
+kind: RulesEngine
+metadata:
+  name: rulesengine-sample
+spec:
+  size: 3
