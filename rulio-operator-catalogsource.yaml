@@ -1,0 +1,13 @@
+apiVersion: operators.coreos.com/v1alpha1
+kind: CatalogSource
+metadata:
+  name: rulio-operator
+  namespace: openshift-marketplace
+spec:
+  sourceType: grpc
+  image: quay.io/acornett/rulio-operator-index:v0.0.1
+  displayName: Rulio Operator
+  publisher: Red Hat Partner
+  updateStrategy:
+    registryPoll:
+      interval: 5m

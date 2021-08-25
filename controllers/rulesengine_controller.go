@@ -44,7 +44,7 @@ type RulesEngineReconciler struct {
 //+kubebuilder:rbac:groups=rules.quay.io,resources=rulesengines/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=rules.quay.io,resources=rulesengines/finalizers,verbs=update
 //+kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=core,resources=pods,verbs=get;list;
+//+kubebuilder:rbac:groups=core,resources=pods,verbs=get;list;watch;
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -119,6 +119,10 @@ func (r *RulesEngineReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		}
 	}
 
+	//todo-adam need logic to write a service
+
+	//todo-adam need logic to write a route
+
 	return ctrl.Result{}, nil
 }
 
@@ -160,6 +164,7 @@ func (r *RulesEngineReconciler) deploymentForRulesEngine(re *rulesv1alpha1.Rules
 							ContainerPort: 8001,
 							Name:          "rulesengine",
 						}},
+						ImagePullPolicy: "Always",
 					}},
 				},
 			},

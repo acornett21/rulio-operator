@@ -57,6 +57,7 @@ spec:
           verbs:
           - get
           - list
+          - watch
         - apiGroups:
           - rules.quay.io
           resources:
@@ -127,7 +128,8 @@ spec:
                 - --leader-elect
                 command:
                 - /manager
-                image: controller:latest
+                image: quay.io/acornett/rulio-operator:0.0.1
+                imagePullPolicy: Always
                 livenessProbe:
                   httpGet:
                     path: /healthz

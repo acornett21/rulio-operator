@@ -49,6 +49,7 @@ func init() {
 }
 
 func main() {
+	controllerNameRulesEngine := "rulesengine-controller"
 	var metricsAddr string
 	var enableLeaderElection bool
 	var probeAddr string
@@ -80,6 +81,7 @@ func main() {
 
 	if err = (&controllers.RulesEngineReconciler{
 		Client: mgr.GetClient(),
+		Log:    ctrl.Log.WithName("controllers").WithName(controllerNameRulesEngine),
 		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "RulesEngine")
