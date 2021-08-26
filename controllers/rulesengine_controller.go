@@ -22,6 +22,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	"reflect"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 
@@ -67,10 +68,9 @@ func (r *RulesEngineReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		log.Error(err, "Failed to get RulesEngine")
 	}
 
-	found := &appsv1.Deployment{}
-	err = r.Get(ctx, types.NamespacedName{Name: rulesEngine.Name, Namespace: rulesEngine.Namespace}, found)
+	foundDeployment := &appsv1.Deployment{}
+	err = r.Get(ctx, types.NamespacedName{Name: rulesEngine.Name, Namespace: rulesEngine.Namespace}, foundDeployment)
 	if err != nil && errors.IsNotFound(err) {
-
 		deployment := r.deploymentForRulesEngine(rulesEngine)
 		log.Info("Creating a new Deployment", "Deployment.Namespace", deployment.Namespace, "Deployment.Name", deployment.Name)
 
@@ -81,6 +81,7 @@ func (r *RulesEngineReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		}
 
 		// Deployment created successfully - return and requeue
+		log.Info("Deployment Created Successfully", "Deployment.Namespace", deployment.Namespace, "Deployment.Name", deployment.Name)
 		return ctrl.Result{Requeue: true}, nil
 	} else if err != nil {
 		log.Error(err, "Failed to get Deployment")
@@ -88,11 +89,11 @@ func (r *RulesEngineReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	}
 
 	size := rulesEngine.Spec.Size
-	if *found.Spec.Replicas != size {
-		found.Spec.Replicas = &size
-		err = r.Update(ctx, found)
+	if *foundDeployment.Spec.Replicas != size {
+		foundDeployment.Spec.Replicas = &size
+		err = r.Update(ctx, foundDeployment)
 		if err != nil {
-			log.Error(err, "Failed to update Deployment", "Deployment.Namespace", found.Namespace, "Deployment.Name", found.Name)
+			log.Error(err, "Failed to update Deployment", "Deployment.Namespace", foundDeployment.Namespace, "Deployment.Name", foundDeployment.Name)
 			return ctrl.Result{}, err
 		}
 		return ctrl.Result{Requeue: true}, err
@@ -120,6 +121,25 @@ func (r *RulesEngineReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	}
 
 	//todo-adam need logic to write a service
+	foundService := &corev1.Service{}
+	err = r.Get(ctx, types.NamespacedName{Name: rulesEngine.Name, Namespace: rulesEngine.Namespace}, foundService)
+	if err != nil && errors.IsNotFound(err) {
+		service := r.serviceForRulesEngine(rulesEngine)
+		log.Info("Creating a new Service", "Service.Namespace", service.Namespace, "Service.Name", service.Name)
+
+		err = r.Create(ctx, service)
+		if err != nil {
+			log.Error(err, "Failed to create new Service", "Service.Namespace", service.Namespace, "Service.Name", service.Name)
+			return ctrl.Result{}, err
+		}
+
+		// Service created successfully - return and requeue
+		log.Info("Service Created Successfully", "Service.Namespace", service.Namespace, "Service.Name", service.Name)
+		return ctrl.Result{Requeue: true}, nil
+	} else if err != nil {
+		log.Error(err, "Failed to get Service")
+		return ctrl.Result{}, err
+	}
 
 	//todo-adam need logic to write a route
 
@@ -174,6 +194,29 @@ func (r *RulesEngineReconciler) deploymentForRulesEngine(re *rulesv1alpha1.Rules
 	ctrl.SetControllerReference(re, deployment, r.Scheme)
 
 	return deployment
+}
+
+func (r *RulesEngineReconciler) serviceForRulesEngine(re *rulesv1alpha1.RulesEngine) *corev1.Service {
+
+	service := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      re.Name,
+			Namespace: re.Namespace,
+		},
+		Spec: corev1.ServiceSpec{
+			Ports: []corev1.ServicePort{{
+				Port:       8001,
+				Protocol:   corev1.ProtocolTCP,
+				TargetPort: intstr.FromInt(8001),
+			}},
+			Selector: labelsForRulesEngine(re.Name),
+			Type:     corev1.ServiceTypeClusterIP,
+		},
+	}
+
+	ctrl.SetControllerReference(re, service, r.Scheme)
+
+	return service
 }
 
 func labelsForRulesEngine(name string) map[string]string {

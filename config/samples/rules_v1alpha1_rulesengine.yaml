@@ -3,4 +3,4 @@ kind: RulesEngine
 metadata:
   name: rulesengine-sample
 spec:
-  size: 3
+  size: 1
