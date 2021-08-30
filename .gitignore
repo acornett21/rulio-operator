@@ -16,3 +16,7 @@
 
 #Goland project files
 .idea
+
+/rulio-operator
+/bin/manager
+/bin/setup-envtest

@@ -18,20 +18,28 @@ package controllers
 
 import (
 	"context"
-	"github.com/go-logr/logr"
-	"k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/apimachinery/pkg/util/intstr"
 	"reflect"
-	"sigs.k8s.io/controller-runtime/pkg/controller"
 
 	rulesv1alpha1 "github.com/acornett21/rulio-operator/api/v1alpha1"
+	"github.com/go-logr/logr"
+	routev1 "github.com/openshift/api/route/v1"
+
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	networkv1 "k8s.io/api/networking/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/intstr"
+	"k8s.io/client-go/discovery"
+	"k8s.io/client-go/kubernetes"
+
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/config"
+	"sigs.k8s.io/controller-runtime/pkg/controller"
 )
 
 // RulesEngineReconciler reconciles a RulesEngine object
@@ -68,6 +76,7 @@ func (r *RulesEngineReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		log.Error(err, "Failed to get RulesEngine")
 	}
 
+	// deployment logic
 	foundDeployment := &appsv1.Deployment{}
 	err = r.Get(ctx, types.NamespacedName{Name: rulesEngine.Name, Namespace: rulesEngine.Namespace}, foundDeployment)
 	if err != nil && errors.IsNotFound(err) {
@@ -120,7 +129,7 @@ func (r *RulesEngineReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		}
 	}
 
-	//todo-adam need logic to write a service
+	// service creation logic
 	foundService := &corev1.Service{}
 	err = r.Get(ctx, types.NamespacedName{Name: rulesEngine.Name, Namespace: rulesEngine.Namespace}, foundService)
 	if err != nil && errors.IsNotFound(err) {
@@ -141,7 +150,56 @@ func (r *RulesEngineReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		return ctrl.Result{}, err
 	}
 
-	//todo-adam need logic to write a route
+	// checking to see if the cluser is an OpenShift Cluster
+	isOpenShiftCLuster, err := verifyOpenShiftCluster(routev1.GroupName, routev1.SchemeGroupVersion.Version)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
+	// if it's an OpenShift Cluster add a route else and an ingress
+	if isOpenShiftCLuster {
+		foundRoute := &routev1.Route{}
+		err = r.Get(ctx, types.NamespacedName{Name: rulesEngine.Name, Namespace: rulesEngine.Namespace}, foundRoute)
+		if err != nil && errors.IsNotFound(err) {
+			route := r.routeForRulesEngine(rulesEngine)
+
+			log.Info("Creating a new Route", "Route.Namespace", route.Namespace, "Route.Name", route.Name)
+
+			err = r.Create(ctx, route)
+			if err != nil {
+				log.Error(err, "Failed to create new Route", "Route.Namespace", route.Namespace, "Route.Name", route.Name)
+				return ctrl.Result{}, err
+			}
+
+			// Service created successfully - return and requeue
+			log.Info("Route Created Successfully", "Route.Namespace", route.Namespace, "Route.Name", route.Name)
+			return ctrl.Result{Requeue: true}, nil
+		} else if err != nil {
+			log.Error(err, "Failed to get Route")
+			return ctrl.Result{}, err
+		}
+	} else {
+		foundIngress := &networkv1.Ingress{}
+		err = r.Get(ctx, types.NamespacedName{Name: rulesEngine.Name, Namespace: rulesEngine.Namespace}, foundIngress)
+		if err != nil && errors.IsNotFound(err) {
+			ingress := r.ingressForRulesEngine(rulesEngine)
+
+			log.Info("Creating a new Ingress", "Ingress.Namespace", ingress.Namespace, "Ingress.Name", ingress.Name)
+
+			err = r.Create(ctx, ingress)
+			if err != nil {
+				log.Error(err, "Failed to create new Ingress", "Ingress.Namespace", ingress.Namespace, "Ingress.Name", ingress.Name)
+				return ctrl.Result{}, err
+			}
+
+			// Service created successfully - return and requeue
+			log.Info("Ingress Created Successfully", "Ingress.Namespace", ingress.Namespace, "Ingress.Name", ingress.Name)
+			return ctrl.Result{Requeue: true}, nil
+		} else if err != nil {
+			log.Error(err, "Failed to get Ingress")
+			return ctrl.Result{}, err
+		}
+	}
 
 	return ctrl.Result{}, nil
 }
@@ -212,11 +270,73 @@ func (r *RulesEngineReconciler) serviceForRulesEngine(re *rulesv1alpha1.RulesEng
 			Selector: labelsForRulesEngine(re.Name),
 			Type:     corev1.ServiceTypeClusterIP,
 		},
+		TypeMeta: metav1.TypeMeta{APIVersion: "v1", Kind: "Route"},
 	}
 
 	ctrl.SetControllerReference(re, service, r.Scheme)
 
 	return service
+}
+
+func (r *RulesEngineReconciler) routeForRulesEngine(re *rulesv1alpha1.RulesEngine) *routev1.Route {
+
+	route := &routev1.Route{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      re.Name,
+			Namespace: re.Namespace,
+			Labels:    labelsForRulesEngine(re.Name),
+		},
+		Spec: routev1.RouteSpec{
+			Port: &routev1.RoutePort{
+				TargetPort: intstr.FromInt(8001),
+			},
+			To: routev1.RouteTargetReference{
+				Kind: "Service",
+				Name: re.Name,
+			},
+		},
+	}
+
+	ctrl.SetControllerReference(re, route, r.Scheme)
+
+	return route
+}
+
+func (r *RulesEngineReconciler) ingressForRulesEngine(re *rulesv1alpha1.RulesEngine) *networkv1.Ingress {
+
+	pathType := networkv1.PathTypePrefix
+
+	ingress := &networkv1.Ingress{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      re.Name,
+			Namespace: re.Namespace,
+			Labels:    labelsForRulesEngine(re.Name),
+		},
+		Spec: networkv1.IngressSpec{
+			Rules: []networkv1.IngressRule{{
+				IngressRuleValue: networkv1.IngressRuleValue{
+					HTTP: &networkv1.HTTPIngressRuleValue{
+						Paths: []networkv1.HTTPIngressPath{{
+							Path:     "/",
+							PathType: &pathType,
+							Backend: networkv1.IngressBackend{
+								Service: &networkv1.IngressServiceBackend{
+									Name: re.Name,
+									Port: networkv1.ServiceBackendPort{
+										Number: 8001,
+									},
+								},
+							},
+						}},
+					},
+				},
+			}},
+		},
+	}
+
+	ctrl.SetControllerReference(re, ingress, r.Scheme)
+
+	return ingress
 }
 
 func labelsForRulesEngine(name string) map[string]string {
@@ -230,4 +350,28 @@ func getPodNames(pods []corev1.Pod) []string {
 		podNames = append(podNames, pod.Name)
 	}
 	return podNames
+}
+
+func verifyOpenShiftCluster(group string, version string) (bool, error) {
+
+	cfg, err := config.GetConfig()
+	if err != nil {
+		return false, err
+	}
+
+	k8s, err := kubernetes.NewForConfig(cfg)
+	if err != nil {
+		return false, err
+	}
+
+	gv := schema.GroupVersion{
+		Group:   group,
+		Version: version,
+	}
+
+	if err = discovery.ServerSupportsVersion(k8s, gv); err != nil {
+		return false, nil
+	}
+
+	return true, nil
 }

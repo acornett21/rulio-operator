@@ -33,6 +33,7 @@ import (
 
 	rulesv1alpha1 "github.com/acornett21/rulio-operator/api/v1alpha1"
 	"github.com/acornett21/rulio-operator/controllers"
+	routev1 "github.com/openshift/api/route/v1"
 	//+kubebuilder:scaffold:imports
 )
 
@@ -43,6 +44,9 @@ var (
 
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
+
+	// adding the routev1 scheme to support OpenShift kind:Route
+	utilruntime.Must(routev1.AddToScheme(scheme))
 
 	utilruntime.Must(rulesv1alpha1.AddToScheme(scheme))
 	//+kubebuilder:scaffold:scheme
