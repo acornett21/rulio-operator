@@ -305,15 +305,19 @@ func (r *RulesEngineReconciler) routeForRulesEngine(re *rulesv1alpha1.RulesEngin
 func (r *RulesEngineReconciler) ingressForRulesEngine(re *rulesv1alpha1.RulesEngine) *networkv1.Ingress {
 
 	pathType := networkv1.PathTypePrefix
+	ingressClassName := "nginx"
 
 	ingress := &networkv1.Ingress{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      re.Name,
 			Namespace: re.Namespace,
-			Labels:    labelsForRulesEngine(re.Name),
+			//Annotations: annotationsForIngress(),
+			Labels: labelsForRulesEngine(re.Name),
 		},
 		Spec: networkv1.IngressSpec{
+			IngressClassName: &ingressClassName,
 			Rules: []networkv1.IngressRule{{
+				Host: re.Name + ".info",
 				IngressRuleValue: networkv1.IngressRuleValue{
 					HTTP: &networkv1.HTTPIngressRuleValue{
 						Paths: []networkv1.HTTPIngressPath{{
