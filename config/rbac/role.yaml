@@ -22,10 +22,26 @@ rules:
   - ""
   resources:
   - pods
+  - services
   verbs:
   - get
   - list
   - watch
+- apiGroups:
+  - networking
+  resources:
+  - ingress
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - route.openshift.io
+  resources:
+  - routes
+  - routes/custom-host
+  verbs:
+  - '*'
 - apiGroups:
   - rules.quay.io
   resources:
